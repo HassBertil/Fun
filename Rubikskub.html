@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiv 3D Rubiks Kub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            background-color: #0f172a;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+        /* Custom scrollbar for move history */
+        ::-webkit-scrollbar {
+            height: 4px;
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 41, 59, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.8);
+            border-radius: 4px;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .face-btn {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .face-btn:active:not(:disabled) {
+            transform: scale(0.92);
+        }
+        .face-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(245, 158, 11, 0.9); box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+            50% { border-color: rgba(245, 158, 11, 0.2); box-shadow: 0 0 5px rgba(245, 158, 11, 0.1); }
+        }
+        .hint-highlight {
+            animation: pulse-border 1.5s infinite;
+            border-width: 2px !important;
+        }
+    </style>
+</head>
+<body class="text-slate-100 h-screen w-screen flex flex-col lg:flex-row relative overflow-hidden">
+
+    <!-- 3D Viewport Area -->
+    <div class="relative flex-1 h-[55vh] lg:h-full w-full overflow-hidden bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        <!-- Top Overlay: Title & Stats -->
+        <div class="absolute top-4 left-4 right-4 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+            <div class="glass-panel px-4 py-2.5 rounded-2xl pointer-events-auto flex items-center gap-3 shadow-xl">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 via-amber-500 to-blue-500 flex items-center justify-center shadow-inner">
+                    <i data-lucide="box" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base sm:text-lg leading-tight tracking-tight text-white">Rubiks Kub 3D</h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Dra på kuben eller bakgrunden • Använd panelen för att styra</p>
+                </div>
+            </div>
+
+            <!-- Stats Pill -->
+            <div class="glass-panel px-4 py-2 rounded-2xl pointer-events-auto flex items-center gap-4 sm:gap-6 shadow-xl">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="footprints" class="w-4 h-4 text-sky-400"></i>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wider text-slate-400 block">Antal drag</span>
+                        <span id="move-counter" class="font-extrabold text-sm sm:text-base text-white">0</span>
+                    </div>
+                </div>
+                <div class="h-6 w-px bg-slate-700"></div>
+                <div class="flex items-center gap-2">
+                    <i data-lucide="timer" class="w-4 h-4 text-emerald-400"></i>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wider text-slate-400 block">Tid</span>
+                        <span id="timer-display" class="font-mono font-bold text-sm sm:text-base text-white">00:00</span>
+                    </div>
+                </div>
+                <div class="h-6 w-px bg-slate-700"></div>
+                <div class="flex items-center gap-2">
+                    <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></span>
+                    <span id="status-text" class="text-xs sm:text-sm font-semibold text-emerald-400">Löst!</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hint / Notification Toast Overlay -->
+        <div id="hint-banner" class="hidden absolute bottom-16 lg:bottom-6 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-lg glass-panel border-amber-500/40 rounded-2xl p-4 shadow-2xl transition-all duration-300">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-3">
+                    <div class="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+                        <i data-lucide="lightbulb" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400">Tips för nästa steg</h3>
+                        <p id="hint-text" class="text-sm font-medium text-slate-100 mt-0.5 leading-snug">
+                            Kuben är redan löst!
+                        </p>
+                        <p id="hint-subtext" class="text-xs text-slate-400 mt-1"></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button id="apply-hint-btn" onclick="executeHintMove()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition shadow-md flex items-center gap-1">
+                        <span>Utför</span>
+                        <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+                    </button>
+                    <button onclick="hideHintBanner()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Reset & Quick Help Bottom Left -->
+        <div class="absolute bottom-3 left-4 z-10 flex items-center gap-2 pointer-events-auto">
+            <button onclick="resetCameraView()" class="glass-panel hover:bg-slate-800/80 text-slate-300 hover:text-white px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition shadow-lg" title="Återställ kameravinkel">
+                <i data-lucide="video" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span>Centrera vy</span>
+            </button>
+            <button onclick="toggleHelpModal()" class="glass-panel hover:bg-slate-800/80 text-slate-300 hover:text-white px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition shadow-lg">
+                <i data-lucide="help-circle" class="w-3.5 h-3.5 text-purple-400"></i>
+                <span class="hidden sm:inline">Hur styr man?</span>
+            </button>
+        </div>
+
+        <!-- 3D Canvas Container -->
+        <div id="canvas-container"></div>
+    </div>
+
+    <!-- Right / Bottom Control Sidebar -->
+    <aside class="w-full lg:w-[400px] xl:w-[430px] h-[45vh] lg:h-full bg-slate-900/95 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col justify-between p-4 sm:p-5 overflow-y-auto z-20 shadow-2xl">
+        
+        <div class="space-y-4 sm:space-y-5">
+            <!-- Main Action Buttons -->
+            <div>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-sky-400"></i>
+                    Huvudfunktioner
+                </h2>
+                <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2.5">
+                    <button id="btn-scramble" onclick="scrambleCube()" class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-lg shadow-indigo-600/25 transition">
+                        <i data-lucide="shuffle" class="w-4 h-4"></i>
+                        <span>Blanda</span>
+                    </button>
+
+                    <button id="btn-hint" onclick="showNextStepHint()" class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 shadow-lg shadow-amber-500/20 transition">
+                        <i data-lucide="lightbulb" class="w-4 h-4"></i>
+                        <span>Tips</span>
+                    </button>
+
+                    <button id="btn-solve" onclick="solveCubeAnimated()" class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 transition">
+                        <i data-lucide="wand-2" class="w-4 h-4"></i>
+                        <span>Lös kuben</span>
+                    </button>
+
+                    <button id="btn-reset" onclick="resetCubeInstant()" class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm bg-slate-800 hover:bg-slate-700 active:bg-slate-850 text-slate-200 border border-slate-700 transition">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                        <span>Återställ</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manual Layer Rotation Controls -->
+            <div>
+                <div class="flex items-center justify-between mb-2.5">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-sky-400"></i>
+                        Rotera sidor (Medurs / Moturs)
+                    </h2>
+                    <span class="text-[11px] text-slate-500">Klicka eller dra på kuben</span>
+                </div>
+
+                <!-- 6 Faces Grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2.5">
+                    
+                    <!-- U: Upp (Vit) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-white border border-slate-400 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Upp <span class="text-slate-400 font-normal">(Vit)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-U" onclick="userTriggerMove('U')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera övre lagret medurs (U)">
+                                <span>U</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-U'" onclick="userTriggerMove('U\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera övre lagret moturs (U')">
+                                <span>U'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- D: Ner (Gul) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-yellow-400 border border-yellow-600 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Ner <span class="text-slate-400 font-normal">(Gul)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-D" onclick="userTriggerMove('D')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera undre lagret medurs (D)">
+                                <span>D</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-D'" onclick="userTriggerMove('D\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera undre lagret moturs (D')">
+                                <span>D'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- F: Fram (Grön) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-emerald-500 border border-emerald-700 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Fram <span class="text-slate-400 font-normal">(Grön)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-F" onclick="userTriggerMove('F')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera främre lagret medurs (F)">
+                                <span>F</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-F'" onclick="userTriggerMove('F\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera främre lagret moturs (F')">
+                                <span>F'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- B: Bak (Blå) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-blue-600 border border-blue-800 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Bak <span class="text-slate-400 font-normal">(Blå)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-B" onclick="userTriggerMove('B')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera bakre lagret medurs (B)">
+                                <span>B</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-B'" onclick="userTriggerMove('B\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera bakre lagret moturs (B')">
+                                <span>B'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- L: Vänster (Orange) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-orange-500 border border-orange-700 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Vänster <span class="text-slate-400 font-normal">(Orange)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-L" onclick="userTriggerMove('L')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera vänstra lagret medurs (L)">
+                                <span>L</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-L'" onclick="userTriggerMove('L\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera vänstra lagret moturs (L')">
+                                <span>L'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- R: Höger (Röd) -->
+                    <div class="bg-slate-800/70 border border-slate-700/70 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-3.5 h-3.5 rounded-sm bg-red-600 border border-red-800 inline-block shrink-0"></span>
+                            <span class="text-xs font-bold text-slate-200">Höger <span class="text-slate-400 font-normal">(Röd)</span></span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button id="move-btn-R" onclick="userTriggerMove('R')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera högra lagret medurs (R)">
+                                <span>R</span>
+                                <i data-lucide="rotate-cw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                            <button id="move-btn-R'" onclick="userTriggerMove('R\'')" class="face-btn py-1.5 px-2 bg-slate-700/80 hover:bg-slate-600 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-1 border border-slate-600/50" title="Rotera högra lagret moturs (R')">
+                                <span>R'</span>
+                                <i data-lucide="rotate-ccw" class="w-3 h-3 text-slate-300"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Move History Log -->
+            <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i data-lucide="history" class="w-3.5 h-3.5 text-slate-400"></i>
+                        Draghistorik
+                    </span>
+                    <span id="remaining-steps-badge" class="text-[11px] text-slate-400 font-medium">0 steg till lösning</span>
+                </div>
+                <div id="move-history-list" class="flex items-center gap-1.5 overflow-x-auto py-1 min-h-[28px] text-xs font-mono text-slate-400">
+                    <span class="text-slate-600 italic text-xs font-sans">Inga drag gjorda ännu...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Info -->
+        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Tangentbord: <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">U</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">D</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">L</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">R</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">F</kbd> <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-slate-300">B</kbd> (+ Shift)</span>
+        </div>
+    </aside>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="help-circle" class="w-5 h-5 text-sky-400"></i>
+                    Hur använder man kuben?
+                </h3>
+                <button onclick="toggleHelpModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-sm text-slate-300 leading-relaxed">
+                <div class="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                    <p class="font-semibold text-white mb-1">1. Rotera hela kuben (Kamera)</p>
+                    <p class="text-xs text-slate-300">Klicka och dra på bakgrunden utanför kuben (eller med höger musknapp) för att snurra kameran runt kuben i 3D.</p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                    <p class="font-semibold text-white mb-1">2. Vrid på kubens sidor</p>
+                    <p class="text-xs text-slate-300">Du kan antingen <strong>dra direkt med musen/fingret på en kubsida</strong> i den riktning du vill snurra, eller klicka på knapparna <strong>U, D, F, B, L, R</strong> i kontrollpanelen.</p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                    <p class="font-semibold text-white mb-1">3. Tips & Lösning</p>
+                    <p class="text-xs text-slate-300">Klicka på <strong>Tips</strong> för att se och markera exakt vilket drag som tar dig närmare en löst kub, eller på <strong>Lös kuben</strong> för att se hela lösningen animeras steg för steg.</p>
+                </div>
+            </div>
+            <button onclick="toggleHelpModal()" class="w-full py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-xl text-sm transition">
+                Förstått!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // --- SWEDISH MOVE DESCRIPTIONS & METADATA ---
+        const MOVE_METADATA = {
+            "U":  { axis: 'y', layer: 1,  angle: -Math.PI / 2, name: "Rotera övre lagret (Vit) medurs", short: "Upp medurs" },
+            "U'": { axis: 'y', layer: 1,  angle:  Math.PI / 2, name: "Rotera övre lagret (Vit) moturs", short: "Upp moturs" },
+            "D":  { axis: 'y', layer: -1, angle:  Math.PI / 2, name: "Rotera undre lagret (Gul) medurs", short: "Ner medurs" },
+            "D'": { axis: 'y', layer: -1, angle: -Math.PI / 2, name: "Rotera undre lagret (Gul) moturs", short: "Ner moturs" },
+            "R":  { axis: 'x', layer: 1,  angle: -Math.PI / 2, name: "Rotera höger sida (Röd) medurs", short: "Höger medurs" },
+            "R'": { axis: 'x', layer: 1,  angle:  Math.PI / 2, name: "Rotera höger sida (Röd) moturs", short: "Höger moturs" },
+            "L":  { axis: 'x', layer: -1, angle:  Math.PI / 2, name: "Rotera vänster sida (Orange) medurs", short: "Vänster medurs" },
+            "L'": { axis: 'x', layer: -1, angle: -Math.PI / 2, name: "Rotera vänster sida (Orange) moturs", short: "Vänster moturs" },
+            "F":  { axis: 'z', layer: 1,  angle: -Math.PI / 2, name: "Rotera framsidan (Grön) medurs", short: "Fram medurs" },
+            "F'": { axis: 'z', layer: 1,  angle:  Math.PI / 2, name: "Rotera framsidan (Grön) moturs", short: "Fram moturs" },
+            "B":  { axis: 'z', layer: -1, angle:  Math.PI / 2, name: "Rotera baksidan (Blå) medurs", short: "Bak medurs" },
+            "B'": { axis: 'z', layer: -1, angle: -Math.PI / 2, name: "Rotera baksidan (Blå) moturs", short: "Bak moturs" }
+        };
+
+        const INVERSE_MOVE = {
+            "U": "U'", "U'": "U",
+            "D": "D'", "D'": "D",
+            "R": "R'", "R'": "R",
+            "L": "L'", "L'": "L",
+            "F": "F'", "F'": "F",
+            "B": "B'", "B'": "B"
+        };
+
+        // --- APPLICATION STATE ---
+        let scene, camera, renderer, orbitControls;
+        let cubies = [];
+        let pivotGroup;
+        let isAnimating = false;
+        let moveQueue = [];
+        
+        // Stack of reduced moves from solved state -> enables optimal hints & step-by-step solving
+        let stateMoveStack = [];
+        // Full log of moves performed for display
+        let fullMoveHistory = [];
+        let moveCount = 0;
+
+        // Timer state
+        let timerInterval = null;
+        let startTime = null;
+        let elapsedSeconds = 0;
+        let isTimerRunning = false;
+
+        // Hint state
+        let currentHighlightedBtnId = null;
+        let hintRingMesh = null;
+
+        // Direct 3D Cube Dragging State
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        let dragState = {
+            active: false,
+            startPoint: new THREE.Vector3(),
+            faceNormal: new THREE.Vector3(),
+            cubie: null,
+            screenStart: new THREE.Vector2()
+        };
+
+        // --- CREATE STICKER TEXTURE ---
+        function createStickerTexture(hexColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Black plastic base
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(0, 0, 256, 256);
+
+            if (hexColor) {
+                // Rounded sticker with subtle bevel
+                const pad = 20;
+                const radius = 28;
+                const w = 256 - pad * 2;
+                const h = 256 - pad * 2;
+
+                ctx.fillStyle = hexColor;
+                ctx.beginPath();
+                ctx.moveTo(pad + radius, pad);
+                ctx.lineTo(pad + w - radius, pad);
+                ctx.quadraticCurveTo(pad + w, pad, pad + w, pad + radius);
+                ctx.lineTo(pad + w, pad + h - radius);
+                ctx.quadraticCurveTo(pad + w, pad + h, pad + w - radius, pad + h);
+                ctx.lineTo(pad + radius, pad + h);
+                ctx.quadraticCurveTo(pad, pad + h, pad, pad + h - radius);
+                ctx.lineTo(pad, pad + radius);
+                ctx.quadraticCurveTo(pad, pad, pad + radius, pad);
+                ctx.closePath();
+                ctx.fill();
+
+                // Subtle inner highlight
+                ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.anisotropy = 4;
+            return texture;
+        }
+
+        // Pre-build face materials
+        const FACE_COLORS = {
+            right:  '#ef4444', // Röd (+X)
+            left:   '#f97316', // Orange (-X)
+            top:    '#ffffff', // Vit (+Y)
+            bottom: '#facc15', // Gul (-Y)
+            front:  '#10b981', // Grön (+Z)
+            back:   '#2563eb', // Blå (-Z)
+            core:   null
+        };
+
+        const MATERIALS = {};
+
+        function initMaterials() {
+            for (const [key, hex] of Object.entries(FACE_COLORS)) {
+                MATERIALS[key] = new THREE.MeshStandardMaterial({
+                    map: createStickerTexture(hex),
+                    roughness: 0.25,
+                    metalness: 0.08
+                });
+            }
+        }
+
+        // --- INITIALIZE 3D SCENE ---
+        function initThreeScene() {
+            const container = document.getElementById('canvas-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
+            camera.position.set(5.2, 4.4, 6.2);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+            scene.add(ambientLight);
+
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.65);
+            dirLight1.position.set(10, 15, 12);
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x94a3b8, 0.4);
+            dirLight2.position.set(-10, -12, -10);
+            scene.add(dirLight2);
+
+            // OrbitControls for rotating the whole cube
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.enablePan = false;
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.07;
+            orbitControls.minDistance = 4.5;
+            orbitControls.maxDistance = 13;
+
+            pivotGroup = new THREE.Group();
+            scene.add(pivotGroup);
+
+            initMaterials();
+            buildCube();
+            createCenterOrientationLabels();
+            setupDirectCubeInteraction();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', onKeyDown);
+
+            animateLoop();
+        }
+
+        // Build the 27 cubies
+        function buildCube() {
+            // Remove existing cubies if any
+            cubies.forEach(c => scene.remove(c));
+            cubies = [];
+
+            const geometry = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+
+            for (let x = -1; x <= 1; x++) {
+                for (let y = -1; y <= 1; y++) {
+                    for (let z = -1; z <= 1; z++) {
+                        const cubieMaterials = [
+                            x === 1  ? MATERIALS.right  : MATERIALS.core, // +X (R)
+                            x === -1 ? MATERIALS.left   : MATERIALS.core, // -X (L)
+                            y === 1  ? MATERIALS.top    : MATERIALS.core, // +Y (U)
+                            y === -1 ? MATERIALS.bottom : MATERIALS.core, // -Y (D)
+                            z === 1  ? MATERIALS.front  : MATERIALS.core, // +Z (F)
+                            z === -1 ? MATERIALS.back   : MATERIALS.core  // -Z (B)
+                        ];
+
+                        const cubie = new THREE.Mesh(geometry, cubieMaterials);
+                        cubie.position.set(x, y, z);
+
+                        // Save home state to check solved status accurately
+                        cubie.userData = {
+                            homePosition: new THREE.Vector3(x, y, z)
+                        };
+
+                        scene.add(cubie);
+                        cubies.push(cubie);
+                    }
+                }
+            }
+        }
+
+        // Create floating subtle ring indicator for 3D hints
+        function show3DHintHighlight(moveCode) {
+            remove3DHintHighlight();
+            const meta = MOVE_METADATA[moveCode];
+            if (!meta) return;
+
+            const ringGeo = new THREE.RingGeometry(1.85, 2.02, 48);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0xf59e0b,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.85
+            });
+            hintRingMesh = new THREE.Mesh(ringGeo, ringMat);
+
+            if (meta.axis === 'x') {
+                hintRingMesh.rotation.y = Math.PI / 2;
+                hintRingMesh.position.x = meta.layer * 1.05;
+            } else if (meta.axis === 'y') {
+                hintRingMesh.rotation.x = Math.PI / 2;
+                hintRingMesh.position.y = meta.layer * 1.05;
+            } else if (meta.axis === 'z') {
+                hintRingMesh.position.z = meta.layer * 1.05;
+            }
+
+            scene.add(hintRingMesh);
+        }
+
+        function remove3DHintHighlight() {
+            if (hintRingMesh) {
+                scene.remove(hintRingMesh);
+                hintRingMesh.geometry.dispose();
+                hintRingMesh.material.dispose();
+                hintRingMesh = null;
+            }
+        }
+
+        // Create subtle floating letters on center caps so users know U, D, F, B, L, R in 3D space
+        function createCenterOrientationLabels() {
+            const centers = [
+                { pos: [1.52, 0, 0],  rot: [0, Math.PI / 2, 0],  letter: 'R' },
+                { pos: [-1.52, 0, 0], rot: [0, -Math.PI / 2, 0], letter: 'L' },
+                { pos: [0, 1.52, 0],  rot: [-Math.PI / 2, 0, 0], letter: 'U' },
+                { pos: [0, -1.52, 0], rot: [Math.PI / 2, 0, 0],  letter: 'D' },
+                { pos: [0, 0, 1.52],  rot: [0, 0, 0],            letter: 'F' },
+                { pos: [0, 0, -1.52], rot: [0, Math.PI, 0],      letter: 'B' }
+            ];
+
+            centers.forEach(info => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.font = 'bold 68px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+                ctx.fillText(info.letter, 64, 64);
+
+                const tex = new THREE.CanvasTexture(canvas);
+                const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+                const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), mat);
+                plane.position.set(...info.pos);
+                plane.rotation.set(...info.rot);
+                scene.add(plane);
+            });
+        }
+
+        // --- DIRECT MOUSE / TOUCH SWIPE ON CUBE FACES ---
+        function setupDirectCubeInteraction() {
+            const dom = renderer.domElement;
+
+            dom.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || isAnimating || moveQueue.length > 0) return;
+
+                const rect = dom.getBoundingClientRect();
+                pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(pointer, camera);
+                const intersects = raycaster.intersectObjects(cubies);
+
+                if (intersects.length > 0) {
+                    const hit = intersects[0];
+                    // Disable camera orbit while swiping a face
+                    orbitControls.enabled = false;
+                    dragState.active = true;
+                    dragState.cubie = hit.object;
+                    dragState.startPoint.copy(hit.point);
+                    dragState.faceNormal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).round();
+                    dragState.screenStart.set(e.clientX, e.clientY);
+                }
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (!dragState.active || isAnimating) return;
+
+                const dx = e.clientX - dragState.screenStart.x;
+                const dy = e.clientY - dragState.screenStart.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < 24) return; // Minimum drag threshold
+
+                // Raycast onto a plane parallel to the clicked face to get 3D drag vector
+                const rect = dom.getBoundingClientRect();
+                pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(pointer, camera);
+                const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dragState.faceNormal, dragState.startPoint);
+                const endPoint = new THREE.Vector3();
+
+                if (raycaster.ray.intersectPlane(plane, endPoint)) {
+                    const dragVec = endPoint.sub(dragState.startPoint);
+                    determineMoveFromSwipe(dragVec, dragState.faceNormal, dragState.cubie.position);
+                }
+
+                dragState.active = false;
+                orbitControls.enabled = true;
+            });
+
+            window.addEventListener('pointerup', () => {
+                if (dragState.active) {
+                    dragState.active = false;
+                    orbitControls.enabled = true;
+                }
+            });
+        }
+
+        function determineMoveFromSwipe(dragVec, normal, cubiePos) {
+            // Zero out component along normal
+            const tangent = dragVec.clone();
+            if (Math.abs(normal.x) > 0.5) tangent.x = 0;
+            if (Math.abs(normal.y) > 0.5) tangent.y = 0;
+            if (Math.abs(normal.z) > 0.5) tangent.z = 0;
+
+            // Keep only dominant axis of drag
+            const ax = Math.abs(tangent.x);
+            const ay = Math.abs(tangent.y);
+            const az = Math.abs(tangent.z);
+
+            let dominantDir = new THREE.Vector3();
+            if (ax >= ay && ax >= az) dominantDir.set(Math.sign(tangent.x), 0, 0);
+            else if (ay >= ax && ay >= az) dominantDir.set(0, Math.sign(tangent.y), 0);
+            else dominantDir.set(0, 0, Math.sign(tangent.z));
+
+            // Rotation axis is cross product of normal and swipe direction
+            const rotAxisVec = new THREE.Vector3().crossVectors(normal, dominantDir);
+
+            let axis = '';
+            let dirSign = 0;
+            if (Math.abs(rotAxisVec.x) > 0.5) { axis = 'x'; dirSign = Math.sign(rotAxisVec.x); }
+            else if (Math.abs(rotAxisVec.y) > 0.5) { axis = 'y'; dirSign = Math.sign(rotAxisVec.y); }
+            else if (Math.abs(rotAxisVec.z) > 0.5) { axis = 'z'; dirSign = Math.sign(rotAxisVec.z); }
+
+            if (!axis) return;
+            const layer = Math.round(cubiePos[axis]);
+
+            // Match outer layer moves (U, D, L, R, F, B)
+            if (layer === 0) {
+                // If user drags middle slice, snap to nearest outer layer or ignore
+                return;
+            }
+
+            // Find matching move code in MOVE_METADATA
+            const targetAngle = dirSign * (Math.PI / 2);
+            for (const [code, meta] of Object.entries(MOVE_METADATA)) {
+                if (meta.axis === axis && meta.layer === layer && Math.sign(meta.angle) === Math.sign(targetAngle)) {
+                    userTriggerMove(code);
+                    break;
+                }
+            }
+        }
+
+        // --- MOVE STACK REDUCTION & LOGIC ---
+        function pushMoveToLogicalStack(moveCode) {
+            const n = stateMoveStack.length;
+            if (n > 0) {
+                const last = stateMoveStack[n - 1];
+                // Move followed by its inverse cancels out (e.g. R then R')
+                if (INVERSE_MOVE[last] === moveCode) {
+                    stateMoveStack.pop();
+                    return;
+                }
+                // Three identical moves in a row equal one inverse move (e.g. R, R, R -> R')
+                if (n >= 2 && last === moveCode && stateMoveStack[n - 2] === moveCode) {
+                    stateMoveStack.pop();
+                    stateMoveStack.pop();
+                    stateMoveStack.push(INVERSE_MOVE[moveCode]);
+                    return;
+                }
+            }
+            stateMoveStack.push(moveCode);
+        }
+
+        function isCubeSolved() {
+            // Check both physical cubie positions/orientations and stack
+            for (const cubie of cubies) {
+                const pos = cubie.position;
+                const home = cubie.userData.homePosition;
+                if (Math.round(pos.x) !== home.x || Math.round(pos.y) !== home.y || Math.round(pos.z) !== home.z) {
+                    return false;
+                }
+                // Check rotation is identity
+                const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(cubie.quaternion);
+                const forwardVec = new THREE.Vector3(0, 0, 1).applyQuaternion(cubie.quaternion);
+                if (Math.round(upVec.y) !== 1 || Math.round(forwardVec.z) !== 1) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // --- QUEUE & ANIMATE MOVES ---
+        function enqueueMove(moveCode, options = {}) {
+            moveQueue.push({
+                moveCode,
+                duration: options.duration || 230,
+                recordMove: options.recordMove !== false,
+                countUserMove: options.countUserMove !== false,
+                onComplete: options.onComplete || null
+            });
+            processMoveQueue();
+        }
+
+        function processMoveQueue() {
+            if (isAnimating || moveQueue.length === 0) return;
+
+            const currentTask = moveQueue.shift();
+            const meta = MOVE_METADATA[currentTask.moveCode];
+            if (!meta) {
+                processMoveQueue();
+                return;
+            }
+
+            isAnimating = true;
+            updateControlsDisabledState();
+
+            // Select cubies belonging to the active layer
+            const activeCubies = cubies.filter(c => Math.round(c.position[meta.axis]) === meta.layer);
+
+            pivotGroup.rotation.set(0, 0, 0);
+            pivotGroup.position.set(0, 0, 0);
+            pivotGroup.updateMatrixWorld();
+
+            activeCubies.forEach(c => {
+                pivotGroup.attach(c);
+            });
+
+            const startTimeAnim = performance.now();
+            const duration = currentTask.duration;
+            const targetAngle = meta.angle;
+
+            function stepAnimation(now) {
+                const progress = Math.min((now - startTimeAnim) / duration, 1);
+                // Smooth easeInOutCubic
+                const eased = progress < 0.5
+                    ? 4 * progress * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+                pivotGroup.rotation[meta.axis] = targetAngle * eased;
+                pivotGroup.updateMatrixWorld();
+
+                if (progress < 1) {
+                    requestAnimationFrame(stepAnimation);
+                } else {
+                    // Finalize rotation and snap coordinates cleanly to integers
+                    pivotGroup.rotation[meta.axis] = targetAngle;
+                    pivotGroup.updateMatrixWorld();
+
+                    activeCubies.forEach(c => {
+                        scene.attach(c);
+                        c.position.set(
+                            Math.round(c.position.x),
+                            Math.round(c.position.y),
+                            Math.round(c.position.z)
+                        );
+                        // Snap orientation euler angles to multiples of 90 degrees
+                        const euler = new THREE.Euler().setFromQuaternion(c.quaternion);
+                        euler.x = Math.round(euler.x / (Math.PI / 2)) * (Math.PI / 2);
+                        euler.y = Math.round(euler.y / (Math.PI / 2)) * (Math.PI / 2);
+                        euler.z = Math.round(euler.z / (Math.PI / 2)) * (Math.PI / 2);
+                        c.quaternion.setFromEuler(euler);
+                        c.updateMatrixWorld();
+                    });
+
+                    if (currentTask.recordMove) {
+                        pushMoveToLogicalStack(currentTask.moveCode);
+                        fullMoveHistory.push(currentTask.moveCode);
+                    }
+
+                    if (currentTask.countUserMove) {
+                        moveCount++;
+                        if (!isTimerRunning && !isCubeSolved()) {
+                            startTimer();
+                        }
+                    }
+
+                    if (isCubeSolved()) {
+                        stateMoveStack = [];
+                        stopTimer();
+                    }
+
+                    isAnimating = false;
+                    updateUI();
+                    updateControlsDisabledState();
+
+                    if (currentTask.onComplete) currentTask.onComplete();
+                    processMoveQueue();
+                }
+            }
+
+            requestAnimationFrame(stepAnimation);
+        }
+
+        // --- USER INTERACTION ACTIONS ---
+        function userTriggerMove(moveCode) {
+            clearHintHighlightUI();
+            enqueueMove(moveCode, {
+                duration: 220,
+                recordMove: true,
+                countUserMove: true
+            });
+        }
+
+        function scrambleCube() {
+            if (isAnimating || moveQueue.length > 0) return;
+            hideHintBanner();
+            stopTimer();
+            resetTimerDisplay();
+            moveCount = 0;
+            fullMoveHistory = [];
+
+            const moveKeys = Object.keys(MOVE_METADATA);
+            const scrambleLength = 16;
+            const scrambleSequence = [];
+
+            let lastAxis = '';
+            let lastMove = '';
+
+            for (let i = 0; i < scrambleLength; i++) {
+                let candidate;
+                do {
+                    candidate = moveKeys[Math.floor(Math.random() * moveKeys.length)];
+                } while (
+                    candidate === INVERSE_MOVE[lastMove] ||
+                    (candidate === lastMove) ||
+                    (MOVE_METADATA[candidate].axis === lastAxis && Math.random() < 0.6)
+                );
+
+                scrambleSequence.push(candidate);
+                lastMove = candidate;
+                lastAxis = MOVE_METADATA[candidate].axis;
+            }
+
+            scrambleSequence.forEach((m, idx) => {
+                enqueueMove(m, {
+                    duration: 110,
+                    recordMove: true,
+                    countUserMove: false,
+                    onComplete: idx === scrambleLength - 1 ? () => {
+                        moveCount = 0;
+                        updateUI();
+                    } : null
+                });
+            });
+        }
+
+        function showNextStepHint() {
+            if (isAnimating || moveQueue.length > 0) return;
+            clearHintHighlightUI();
+
+            const banner = document.getElementById('hint-banner');
+            const hintText = document.getElementById('hint-text');
+            const hintSubtext = document.getElementById('hint-subtext');
+            const applyBtn = document.getElementById('apply-hint-btn');
+
+            banner.classList.remove('hidden');
+
+            if (isCubeSolved() || stateMoveStack.length === 0) {
+                hintText.textContent = "Kuben är redan helt löst!";
+                hintSubtext.textContent = "Klicka på 'Blanda' för en ny utmaning.";
+                applyBtn.classList.add('hidden');
+                return;
+            }
+
+            applyBtn.classList.remove('hidden');
+            const lastScrambleMove = stateMoveStack[stateMoveStack.length - 1];
+            const recommendedMove = INVERSE_MOVE[lastScrambleMove];
+            const meta = MOVE_METADATA[recommendedMove];
+
+            hintText.textContent = `Nästa rekommenderade drag: ${meta.name} (${recommendedMove})`;
+            hintSubtext.textContent = `${stateMoveStack.length} steg kvar till löst kub.`;
+
+            // Highlight the corresponding button in sidebar
+            const btn = document.getElementById(`move-btn-${recommendedMove}`);
+            if (btn) {
+                btn.classList.add('hint-highlight');
+                currentHighlightedBtnId = `move-btn-${recommendedMove}`;
+            }
+
+            // Show 3D ring on the cube layer
+            show3DHintHighlight(recommendedMove);
+        }
+
+        function executeHintMove() {
+            if (isAnimating || moveQueue.length > 0 || stateMoveStack.length === 0) return;
+            const lastScrambleMove = stateMoveStack[stateMoveStack.length - 1];
+            const recommendedMove = INVERSE_MOVE[lastScrambleMove];
+
+            clearHintHighlightUI();
+            enqueueMove(recommendedMove, {
+                duration: 260,
+                recordMove: true,
+                countUserMove: true,
+                onComplete: () => {
+                    if (!isCubeSolved() && !document.getElementById('hint-banner').classList.contains('hidden')) {
+                        showNextStepHint();
+                    } else {
+                        hideHintBanner();
+                    }
+                }
+            });
+        }
+
+        function solveCubeAnimated() {
+            if (isAnimating || moveQueue.length > 0) return;
+            hideHintBanner();
+
+            if (isCubeSolved() || stateMoveStack.length === 0) {
+                return;
+            }
+
+            // Build solution sequence by reversing and inverting the current state stack
+            const solutionMoves = stateMoveStack.slice().reverse().map(m => INVERSE_MOVE[m]);
+
+            solutionMoves.forEach((moveCode) => {
+                enqueueMove(moveCode, {
+                    duration: 180,
+                    recordMove: true,
+                    countUserMove: false
+                });
+            });
+        }
+
+        function resetCubeInstant() {
+            moveQueue = [];
+            isAnimating = false;
+            stateMoveStack = [];
+            fullMoveHistory = [];
+            moveCount = 0;
+            hideHintBanner();
+            stopTimer();
+            resetTimerDisplay();
+
+            buildCube();
+            resetCameraView();
+            updateUI();
+            updateControlsDisabledState();
+        }
+
+        function resetCameraView() {
+            camera.position.set(5.2, 4.4, 6.2);
+            orbitControls.target.set(0, 0, 0);
+            orbitControls.update();
+        }
+
+        function clearHintHighlightUI() {
+            if (currentHighlightedBtnId) {
+                const el = document.getElementById(currentHighlightedBtnId);
+                if (el) el.classList.remove('hint-highlight');
+                currentHighlightedBtnId = null;
+            }
+            remove3DHintHighlight();
+        }
+
+        function hideHintBanner() {
+            clearHintHighlightUI();
+            document.getElementById('hint-banner').classList.add('hidden');
+        }
+
+        function toggleHelpModal() {
+            const modal = document.getElementById('help-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        // --- TIMER FUNCTIONS ---
+        function startTimer() {
+            if (isTimerRunning) return;
+            isTimerRunning = true;
+            startTime = Date.now() - elapsedSeconds * 1000;
+            timerInterval = setInterval(() => {
+                elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+                const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+                const secs = String(elapsedSeconds % 60).padStart(2, '0');
+                document.getElementById('timer-display').textContent = `${mins}:${secs}`;
+            }, 500);
+        }
+
+        function stopTimer() {
+            isTimerRunning = false;
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function resetTimerDisplay() {
+            elapsedSeconds = 0;
+            document.getElementById('timer-display').textContent = '00:00';
+        }
+
+        // --- UI UPDATES ---
+        function updateUI() {
+            document.getElementById('move-counter').textContent = moveCount;
+
+            const solved = isCubeSolved();
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            const remainingBadge = document.getElementById('remaining-steps-badge');
+
+            if (solved) {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]';
+                statusText.className = 'text-xs sm:text-sm font-semibold text-emerald-400';
+                statusText.textContent = 'Löst!';
+                remainingBadge.textContent = '0 steg till lösning';
+            } else {
+                statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]';
+                statusText.className = 'text-xs sm:text-sm font-semibold text-amber-400';
+                statusText.textContent = 'Blandad';
+                remainingBadge.textContent = `${stateMoveStack.length} steg till lösning`;
+            }
+
+            // Update history pills
+            const historyContainer = document.getElementById('move-history-list');
+            if (fullMoveHistory.length === 0) {
+                historyContainer.innerHTML = '<span class="text-slate-600 italic text-xs font-sans">Inga drag gjorda ännu...</span>';
+            } else {
+                const recentMoves = fullMoveHistory.slice(-18);
+                historyContainer.innerHTML = recentMoves.map((m, idx) => {
+                    const isLatest = idx === recentMoves.length - 1;
+                    return `<span class="px-2 py-0.5 rounded-md font-bold shrink-0 ${
+                        isLatest
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-slate-800 text-slate-300'
+                    }">${m}</span>`;
+                }).join('');
+                historyContainer.scrollLeft = historyContainer.scrollWidth;
+            }
+        }
+
+        function updateControlsDisabledState() {
+            const busy = isAnimating || moveQueue.length > 0;
+            const buttons = document.querySelectorAll('.face-btn, #btn-scramble, #btn-solve, #btn-hint');
+            buttons.forEach(btn => {
+                btn.disabled = busy;
+            });
+        }
+
+        // --- KEYBOARD SHORTCUTS ---
+        function onKeyDown(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            const key = e.key.toUpperCase();
+            if (['U', 'D', 'L', 'R', 'F', 'B'].includes(key)) {
+                const moveCode = e.shiftKey ? `${key}'` : key;
+                userTriggerMove(moveCode);
+            }
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            if (!container || !renderer || !camera) return;
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        // --- RENDER LOOP ---
+        function animateLoop() {
+            requestAnimationFrame(animateLoop);
+            if (orbitControls) orbitControls.update();
+            if (hintRingMesh) {
+                hintRingMesh.material.opacity = 0.55 + 0.35 * Math.sin(performance.now() * 0.006);
+            }
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        window.onload = function () {
+            initThreeScene();
+            updateUI();
+        };
+    </script>
+</body>
+</html>
