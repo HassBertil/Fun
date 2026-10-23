@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rymdförsvararen - Rymdspel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050510;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #0d1127 0%, #050510 100%);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .neon-text-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.8), 0 0 20px rgba(6, 182, 212, 0.4);
+        }
+        .neon-text-pink {
+            text-shadow: 0 0 10px rgba(236, 72, 153, 0.8), 0 0 20px rgba(236, 72, 153, 0.4);
+        }
+        .neon-box {
+            box-shadow: 0 0 25px rgba(6, 182, 212, 0.2), inset 0 0 15px rgba(6, 182, 212, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .btn-difficulty {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-difficulty:hover {
+            transform: translateY(-3px) scale(1.03);
+        }
+        .btn-difficulty:active {
+            transform: translateY(1px) scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Spelets Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD (Heads-Up Display) -->
+    <div id="hud" class="hidden absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start pointer-events-none z-10">
+        <!-- Vänster: Liv / Sköld och Svårighetsgrad -->
+        <div class="flex flex-col gap-2 bg-slate-900/80 border border-slate-700/80 px-4 py-3 rounded-2xl backdrop-blur-md shadow-lg">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-orbitron uppercase tracking-wider text-slate-400">Sköld:</span>
+                <div id="lives-container" class="flex gap-1.5 text-xl">
+                    <!-- Hjärtan/Sköldar renderas här via JS -->
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-orbitron uppercase tracking-wider text-slate-400">Nivå:</span>
+                <span id="hud-difficulty" class="text-xs font-bold uppercase px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Medel</span>
+            </div>
+        </div>
+
+        <!-- Höger: Poäng & Rekord -->
+        <div class="flex flex-col items-end bg-slate-900/80 border border-slate-700/80 px-5 py-3 rounded-2xl backdrop-blur-md shadow-lg">
+            <div class="text-xs font-orbitron uppercase tracking-wider text-slate-400">Poäng</div>
+            <div id="hud-score" class="text-2xl md:text-3xl font-orbitron font-black text-cyan-400 neon-text-cyan">0</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Rekord: <span id="hud-highscore" class="text-slate-200 font-semibold">0</span></div>
+        </div>
+    </div>
+
+    <!-- Ljud- och Pausknappar (Alltid synliga uppe i mitten eller hörnet) -->
+    <div class="absolute top-4 center z-20 flex gap-2">
+        <button id="btn-mute" class="bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/80 p-2.5 rounded-xl backdrop-blur-md transition shadow-lg" title="Ljud På/Av">
+            <svg id="icon-sound-on" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+            <svg id="icon-sound-off" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-rose-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Startskärm -->
+    <div id="start-screen" class="absolute inset-0 flex items-center justify-center p-4 z-30 bg-slate-950/60 backdrop-blur-sm">
+        <div class="max-w-lg w-full bg-slate-900/90 border border-cyan-500/40 rounded-3xl p-6 md:p-8 text-center neon-box flex flex-col items-center">
+            <!-- Rymdskepps-ikon -->
+            <div class="w-16 h-16 mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shadow-inner">
+                <svg class="w-10 h-10 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 2L4 20l8-4 8 4L12 2z" />
+                </svg>
+            </div>
+
+            <h1 class="text-3xl md:text-5xl font-orbitron font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500 neon-text-cyan mb-2">
+                RYMDFÖRSVARAREN
+            </h1>
+            <p class="text-slate-300 text-sm md:text-base mb-6 max-w-md">
+                Navigera genom asteroidbältet och oskadliggör fientliga rymdmonster innan de bryter igenom försvaret!
+            </p>
+
+            <!-- Kontroller / Instruktioner -->
+            <div class="w-full bg-slate-950/70 border border-slate-800 rounded-2xl p-4 mb-6 text-left">
+                <div class="text-xs font-orbitron uppercase text-cyan-400 tracking-wider mb-2 text-center">Spelkontroller</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs md:text-sm text-slate-300">
+                    <div class="flex items-center gap-2.5 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800/80">
+                        <span class="px-2 py-1 bg-slate-800 text-cyan-300 rounded font-mono text-xs font-bold border border-slate-700">WASD / Piltangenter</span>
+                        <span>Styr skeppet</span>
+                    </div>
+                    <div class="flex items-center gap-2.5 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800/80">
+                        <span class="px-2 py-1 bg-slate-800 text-pink-400 rounded font-mono text-xs font-bold border border-slate-700">Mellanslag</span>
+                        <span>Avfyra laser</span>
+                    </div>
+                </div>
+                <div class="text-[11px] text-slate-400 text-center mt-2.5">
+                    💡 <span class="text-slate-300">Tips:</span> På mobil eller pekskärm kan du styra och skjuta genom att dra med fingret.
+                </div>
+            </div>
+
+            <!-- Välj svårighetsgrad -->
+            <div class="w-full mb-2">
+                <h2 class="text-sm font-orbitron uppercase tracking-widest text-slate-300 mb-3">Välj Svårighetsgrad för att starta</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+                    <button onclick="startGame('easy')" class="btn-difficulty group relative overflow-hidden bg-emerald-950/60 hover:bg-emerald-900/80 border-2 border-emerald-500/50 hover:border-emerald-400 rounded-2xl p-4 text-center flex flex-col items-center justify-center shadow-lg">
+                        <span class="font-orbitron font-bold text-lg text-emerald-300 group-hover:text-white">LÄTT</span>
+                        <span class="text-[11px] text-emerald-400/80 mt-1">Lugnt tempo &amp; 5 sköldar</span>
+                    </button>
+
+                    <button onclick="startGame('medium')" class="btn-difficulty group relative overflow-hidden bg-cyan-950/60 hover:bg-cyan-900/80 border-2 border-cyan-500/50 hover:border-cyan-400 rounded-2xl p-4 text-center flex flex-col items-center justify-center shadow-lg">
+                        <span class="font-orbitron font-bold text-lg text-cyan-300 group-hover:text-white">MEDEL</span>
+                        <span class="text-[11px] text-cyan-400/80 mt-1">Balanserat &amp; 3 sköldar</span>
+                    </button>
+
+                    <button onclick="startGame('hard')" class="btn-difficulty group relative overflow-hidden bg-rose-950/60 hover:bg-rose-900/80 border-2 border-rose-500/50 hover:border-rose-400 rounded-2xl p-4 text-center flex flex-col items-center justify-center shadow-lg">
+                        <span class="font-orbitron font-bold text-lg text-rose-300 group-hover:text-white">SVÅR</span>
+                        <span class="text-[11px] text-rose-400/80 mt-1">Intensivt &amp; snabba monster</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over-skärm -->
+    <div id="gameover-screen" class="hidden absolute inset-0 flex items-center justify-center p-4 z-30 bg-slate-950/75 backdrop-blur-md">
+        <div class="max-w-md w-full bg-slate-900/95 border border-rose-500/40 rounded-3xl p-6 md:p-8 text-center neon-box flex flex-col items-center">
+            <div class="w-16 h-16 mb-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center">
+                <svg class="w-9 h-9 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+            </div>
+
+            <h2 class="text-3xl md:text-4xl font-orbitron font-black text-rose-500 neon-text-pink mb-1">
+                SPELET ÄR SLUT!
+            </h2>
+            <p class="text-slate-400 text-sm mb-6">Ditt rymdskepp förstördes i striden.</p>
+
+            <!-- Resultatkort -->
+            <div class="w-full bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mb-6 grid grid-cols-2 gap-4">
+                <div class="flex flex-col items-center border-r border-slate-800 pr-2">
+                    <span class="text-xs font-orbitron uppercase text-slate-400">Slutpoäng</span>
+                    <span id="final-score" class="text-2xl md:text-3xl font-orbitron font-bold text-cyan-400 mt-1">0</span>
+                </div>
+                <div class="flex flex-col items-center pl-2">
+                    <span class="text-xs font-orbitron uppercase text-slate-400">Högsta Poäng</span>
+                    <span id="final-highscore" class="text-2xl md:text-3xl font-orbitron font-bold text-amber-400 mt-1">0</span>
+                </div>
+                <div class="col-span-2 pt-2 border-t border-slate-800/80 flex justify-around text-xs text-slate-300">
+                    <span>Monster besegrade: <strong id="stat-monsters" class="text-pink-400">0</strong></span>
+                    <span>Asteroider sprängda: <strong id="stat-asteroids" class="text-amber-300">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Knappar för omstart -->
+            <div class="flex flex-col w-full gap-3">
+                <button id="btn-restart" class="btn-difficulty w-full py-3.5 px-6 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-orbitron font-bold rounded-2xl shadow-lg shadow-cyan-500/25 border border-cyan-300/30">
+                    SPELA IGEN (SAMMA NIVÅ)
+                </button>
+                <button id="btn-change-diff" class="btn-difficulty w-full py-3 px-6 bg-slate-800 hover:bg-slate-700 text-slate-200 font-orbitron text-sm font-semibold rounded-2xl border border-slate-600">
+                    BYT SVÅRIGHETSGRAD
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // LJUDSYSTEM (Web Audio API - Inga externa filer)
+    // ==========================================
+    class SoundSystem {
+        constructor() {
+            this.ctx = null;
+            this.muted = false;
+        }
+
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    this.ctx = new AudioCtx();
+                }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        }
+
+        playLaser() {
+            if (this.muted || !this.ctx) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(750, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(140, this.ctx.currentTime + 0.14);
+
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.14);
+            } catch (e) {}
+        }
+
+        playEnemyLaser() {
+            if (this.muted || !this.ctx) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(380, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.18);
+
+                gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.18);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.18);
+            } catch (e) {}
+        }
+
+        playExplosion(type = 'small') {
+            if (this.muted || !this.ctx) return;
+            try {
+                const duration = type === 'player' ? 0.6 : (type === 'monster' ? 0.32 : 0.22);
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(type === 'monster' ? 600 : 400, this.ctx.currentTime);
+                filter.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + duration);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(type === 'player' ? 0.3 : 0.18, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                noise.start();
+                noise.stop(this.ctx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        playPowerup() {
+            if (this.muted || !this.ctx) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.25);
+
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            } catch (e) {}
+        }
+    }
+
+    const sound = new SoundSystem();
+
+    // ==========================================
+    // SVÅRIGHETSGRADER & KONFIGURATION
+    // ==========================================
+    const DIFFICULTIES = {
+        easy: {
+            label: 'Lätt',
+            badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+            lives: 5,
+            asteroidInterval: 1350,
+            monsterInterval: 2300,
+            speedMultiplier: 0.75,
+            monsterShootChance: 0.0025,
+            scoreMultiplier: 1
+        },
+        medium: {
+            label: 'Medel',
+            badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+            lives: 3,
+            asteroidInterval: 950,
+            monsterInterval: 1550,
+            speedMultiplier: 1.0,
+            monsterShootChance: 0.0055,
+            scoreMultiplier: 1.5
+        },
+        hard: {
+            label: 'Svår',
+            badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+            lives: 3,
+            asteroidInterval: 620,
+            monsterInterval: 980,
+            speedMultiplier: 1.38,
+            monsterShootChance: 0.010,
+            scoreMultiplier: 2
+        }
+    };
+
+    // ==========================================
+    // SPELVARIABLER & DOM-ELEMENT
+    // ==========================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const hud = document.getElementById('hud');
+    const hudScore = document.getElementById('hud-score');
+    const hudHighScore = document.getElementById('hud-highscore');
+    const hudDifficulty = document.getElementById('hud-difficulty');
+    const livesContainer = document.getElementById('lives-container');
+
+    const startScreen = document.getElementById('start-screen');
+    const gameoverScreen = document.getElementById('gameover-screen');
+    const finalScoreEl = document.getElementById('final-score');
+    const finalHighScoreEl = document.getElementById('final-highscore');
+    const statMonstersEl = document.getElementById('stat-monsters');
+    const statAsteroidsEl = document.getElementById('stat-asteroids');
+
+    let gameState = 'START'; // START, PLAYING, GAMEOVER
+    let currentDifficultyKey = 'medium';
+    let score = 0;
+    let highScore = 0;
+    try {
+        highScore = parseInt(localStorage.getItem('rymdforsvararen_highscore')) || 0;
+    } catch (e) {
+        highScore = 0;
+    }
+    hudHighScore.textContent = highScore;
+
+    let monstersKilled = 0;
+    let asteroidsDestroyed = 0;
+    let screenShake = 0;
+
+    // Tidsstyrning
+    let lastTime = 0;
+    let asteroidTimer = 0;
+    let monsterTimer = 0;
+    let difficultyProgression = 1;
+
+    // Input-tillstånd
+    const keys = {
+        ArrowUp: false,
+        ArrowDown: false,
+        ArrowLeft: false,
+        ArrowRight: false,
+        KeyW: false,
+        KeyS: false,
+        KeyA: false,
+        KeyD: false,
+        Space: false
+    };
+
+    const touchState = {
+        active: false,
+        x: 0,
+        y: 0
+    };
+
+    // Spelobjekt-listor
+    let stars = [];
+    let player = null;
+    let playerLasers = [];
+    let enemyLasers = [];
+    let asteroids = [];
+    let monsters = [];
+    let particles = [];
+    let floatingTexts = [];
+    let powerups = [];
+
+    // ==========================================
+    // SKÄRMSTORLEK & STJÄRNHIMMEL
+    // ==========================================
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        initStars();
+        if (player) {
+            player.x = Math.min(Math.max(player.radius, player.x), canvas.width - player.radius);
+            player.y = Math.min(Math.max(player.radius, player.y), canvas.height - player.radius);
+        }
+    }
+
+    function initStars() {
+        stars = [];
+        const numStars = Math.floor((canvas.width * canvas.height) / 9000);
+        for (let i = 0; i < numStars; i++) {
+            const layer = Math.random();
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: layer < 0.6 ? 1.2 : (layer < 0.9 ? 2.2 : 3.2),
+                speed: layer < 0.6 ? 25 : (layer < 0.9 ? 65 : 120),
+                alpha: 0.3 + Math.random() * 0.7,
+                twinkleSpeed: 1 + Math.random() * 3,
+                twinklePhase: Math.random() * Math.PI * 2,
+                color: Math.random() > 0.8 ? '#a5f3fc' : (Math.random() > 0.8 ? '#fbcfe8' : '#ffffff')
+            });
+        }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // ==========================================
+    // KLASSER FÖR SPELOBJEKT
+    // ==========================================
+
+    class Player {
+        constructor(lives) {
+            this.radius = 22;
+            this.x = canvas.width / 2;
+            this.y = canvas.height - 100;
+            this.vx = 0;
+            this.vy = 0;
+            this.accel = 1700;
+            this.friction = 0.88;
+            this.maxSpeed = 520;
+            this.lives = lives;
+            this.maxLives = lives;
+            this.shootCooldown = 0;
+            this.shootInterval = 0.17; // sekunder mellan skott
+            this.invulnerableTimer = 0;
+            this.weaponUpgradeTimer = 0; // Dubbellaser vid bonus
+            this.flamePhase = 0;
+        }
+
+        update(dt) {
+            let moveX = 0;
+            let moveY = 0;
+
+            if (keys.ArrowLeft || keys.KeyA) moveX -= 1;
+            if (keys.ArrowRight || keys.KeyD) moveX += 1;
+            if (keys.ArrowUp || keys.KeyW) moveY -= 1;
+            if (keys.ArrowDown || keys.KeyS) moveY += 1;
+
+            // Normalisera diagonal rörelse
+            if (moveX !== 0 && moveY !== 0) {
+                const inv = 1 / Math.sqrt(2);
+                moveX *= inv;
+                moveY *= inv;
+            }
+
+            if (touchState.active) {
+                const dx = touchState.x - this.x;
+                const dy = (touchState.y - 45) - this.y; // Lite ovanför fingret så man ser skeppet
+                this.x += dx * Math.min(1, dt * 12);
+                this.y += dy * Math.min(1, dt * 12);
+            } else {
+                this.vx += moveX * this.accel * dt;
+                this.vy += moveY * this.accel * dt;
+
+                // Begränsa maxhastighet
+                const speed = Math.hypot(this.vx, this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+
+                this.vx *= Math.pow(this.friction, dt * 60);
+                this.vy *= Math.pow(this.friction, dt * 60);
+            }
+
+            // Håll inom skärmen
+            const margin = this.radius + 6;
+            if (this.x < margin) { this.x = margin; this.vx = 0; }
+            if (this.x > canvas.width - margin) { this.x = canvas.width - margin; this.vx = 0; }
+            if (this.y < margin) { this.y = margin; this.vy = 0; }
+            if (this.y > canvas.height - margin) { this.y = canvas.height - margin; this.vy = 0; }
+
+            // Skjut-nedräkning
+            if (this.shootCooldown > 0) {
+                this.shootCooldown -= dt;
+            }
+
+            if ((keys.Space || touchState.active) && this.shootCooldown <= 0) {
+                this.shoot();
+            }
+
+            if (this.invulnerableTimer > 0) {
+                this.invulnerableTimer -= dt;
+            }
+
+            if (this.weaponUpgradeTimer > 0) {
+                this.weaponUpgradeTimer -= dt;
+            }
+
+            this.flamePhase += dt * 25;
+        }
+
+        shoot() {
+            this.shootCooldown = this.shootInterval;
+            sound.playLaser();
+
+            if (this.weaponUpgradeTimer > 0) {
+                // Dubbel- eller trippellaser
+                playerLasers.push({
+                    x: this.x - 14,
+                    y: this.y - 12,
+                    vx: -30,
+                    vy: -780,
+                    radius: 4,
+                    color: '#38bdf8'
+                });
+                playerLasers.push({
+                    x: this.x + 14,
+                    y: this.y - 12,
+                    vx: 30,
+                    vy: -780,
+                    radius: 4,
+                    color: '#38bdf8'
+                });
+                playerLasers.push({
+                    x: this.x,
+                    y: this.y - 20,
+                    vx: 0,
+                    vy: -820,
+                    radius: 4.5,
+                    color: '#a855f7'
+                });
+            } else {
+                // Dubbla standardkanoner på vingarna
+                playerLasers.push({
+                    x: this.x - 11,
+                    y: this.y - 10,
+                    vx: 0,
+                    vy: -780,
+                    radius: 3.5,
+                    color: '#22d3ee'
+                });
+                playerLasers.push({
+                    x: this.x + 11,
+                    y: this.y - 10,
+                    vx: 0,
+                    vy: -780,
+                    radius: 3.5,
+                    color: '#22d3ee'
+                });
+            }
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+
+            // Blinka om osårbar efter träff
+            if (this.invulnerableTimer > 0 && Math.floor(this.invulnerableTimer * 12) % 2 === 0) {
+                ctx.globalAlpha = 0.45;
+            }
+
+            // Luta skeppet svagt baserat på horisontell hastighet
+            const tilt = (this.vx / this.maxSpeed) * 0.22;
+            ctx.rotate(tilt);
+
+            // Motorflamma
+            const flameLength = 14 + Math.sin(this.flamePhase) * 6;
+            const flameGrad = ctx.createLinearGradient(0, 14, 0, 14 + flameLength);
+            flameGrad.addColorStop(0, '#38bdf8');
+            flameGrad.addColorStop(0.5, '#ec4899');
+            flameGrad.addColorStop(1, 'rgba(236, 72, 153, 0)');
+
+            ctx.fillStyle = flameGrad;
+            ctx.beginPath();
+            ctx.moveTo(-7, 14);
+            ctx.lineTo(0, 16 + flameLength);
+            ctx.lineTo(7, 14);
+            ctx.closePath();
+            ctx.fill();
+
+            // Skeppets vingar och kropp
+            ctx.shadowColor = '#06b6d4';
+            ctx.shadowBlur = 12;
+
+            ctx.fillStyle = '#0f172a';
+            ctx.strokeStyle = this.weaponUpgradeTimer > 0 ? '#c084fc' : '#22d3ee';
+            ctx.lineWidth = 2.5;
+
+            ctx.beginPath();
+            ctx.moveTo(0, -24);        // Nos
+            ctx.lineTo(22, 16);        // Höger vingspets
+            ctx.lineTo(9, 12);         // Höger inre
+            ctx.lineTo(0, 18);         // Mitten bak
+            ctx.lineTo(-9, 12);        // Vänster inre
+            ctx.lineTo(-22, 16);       // Vänster vingspets
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Kanonpipor
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(-13, -6, 3, 10);
+            ctx.fillRect(10, -6, 3, 10);
+
+            // Cockpit
+            ctx.fillStyle = '#67e8f9';
+            ctx.beginPath();
+            ctx.ellipse(0, -3, 4.5, 9, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sköld-cirkel om nyss träffad
+            if (this.invulnerableTimer > 0) {
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius + 8, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+    }
+
+    class Asteroid {
+        constructor(speedMult) {
+            this.radius = 18 + Math.random() * 26;
+            this.x = this.radius + Math.random() * (canvas.width - this.radius * 2);
+            this.y = -this.radius - 20;
+            this.vy = (95 + Math.random() * 130) * speedMult;
+            this.vx = (Math.random() - 0.5) * 70 * speedMult;
+            this.angle = Math.random() * Math.PI * 2;
+            this.rotSpeed = (Math.random() - 0.5) * 2.5;
+            this.hp = this.radius > 32 ? 2 : 1;
+            this.maxHp = this.hp;
+            this.hitFlash = 0;
+
+            // Skapa oregelbunden klippform
+            this.vertices = [];
+            const numPoints = 9 + Math.floor(Math.random() * 4);
+            for (let i = 0; i < numPoints; i++) {
+                const a = (i / numPoints) * Math.PI * 2;
+                const r = this.radius * (0.78 + Math.random() * 0.32);
+                this.vertices.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+            }
+
+            // Kratrar
+            this.craters = [];
+            const numCraters = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < numCraters; i++) {
+                const dist = Math.random() * (this.radius * 0.45);
+                const ang = Math.random() * Math.PI * 2;
+                this.craters.push({
+                    x: Math.cos(ang) * dist,
+                    y: Math.sin(ang) * dist,
+                    r: 3 + Math.random() * (this.radius * 0.18)
+                });
+            }
+        }
+
+        update(dt) {
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            this.angle += this.rotSpeed * dt;
+            if (this.hitFlash > 0) this.hitFlash -= dt;
+
+            // Studsa mot sidokanter
+            if (this.x < this.radius && this.vx < 0) this.vx *= -1;
+            if (this.x > canvas.width - this.radius && this.vx > 0) this.vx *= -1;
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.angle);
+
+            ctx.fillStyle = this.hitFlash > 0 ? '#fde047' : '#334155';
+            ctx.strokeStyle = this.hitFlash > 0 ? '#ffffff' : '#94a3b8';
+            ctx.lineWidth = 2.2;
+
+            ctx.beginPath();
+            this.vertices.forEach((v, idx) => {
+                if (idx === 0) ctx.moveTo(v.x, v.y);
+                else ctx.lineTo(v.x, v.y);
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Rita kratrar
+            ctx.fillStyle = '#1e293b';
+            this.craters.forEach(c => {
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.restore();
+        }
+    }
+
+    class Monster {
+        constructor(speedMult, shootChance) {
+            this.radius = 22;
+            this.x = 40 + Math.random() * (canvas.width - 80);
+            this.y = -this.radius - 20;
+            this.baseX = this.x;
+            this.vy = (75 + Math.random() * 65) * speedMult;
+            this.waveAmplitude = 35 + Math.random() * 55;
+            this.waveFreq = 1.8 + Math.random() * 2;
+            this.phase = Math.random() * Math.PI * 2;
+            this.shootChance = shootChance;
+            this.type = Math.random() > 0.35 ? 'tentacle' : 'hunter';
+            this.hp = this.type === 'hunter' ? 2 : 1;
+            this.hitFlash = 0;
+        }
+
+        update(dt) {
+            this.phase += this.waveFreq * dt;
+            this.y += this.vy * dt;
+            this.x = this.baseX + Math.sin(this.phase) * this.waveAmplitude;
+
+            // Håll monstret inom skärmen horisontellt
+            if (this.x < this.radius) this.x = this.radius;
+            if (this.x > canvas.width - this.radius) this.x = canvas.width - this.radius;
+
+            if (this.hitFlash > 0) this.hitFlash -= dt;
+
+            // Slumpmässig chans att skjuta mot spelaren
+            if (Math.random() < this.shootChance * (dt * 60)) {
+                this.shoot();
+            }
+        }
+
+        shoot() {
+            sound.playEnemyLaser();
+            let vx = 0;
+            let vy = 340;
+
+            // Jägarmonster siktar svagt mot spelaren
+            if (this.type === 'hunter' && player) {
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const dist = Math.hypot(dx, dy) || 1;
+                vx = (dx / dist) * 320;
+                vy = Math.max(180, (dy / dist) * 320);
+            }
+
+            enemyLasers.push({
+                x: this.x,
+                y: this.y + 16,
+                vx: vx,
+                vy: vy,
+                radius: 4.5
+            });
+        }
+
+        draw(ctx) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+
+            const mainColor = this.hitFlash > 0 ? '#ffffff' : (this.type === 'hunter' ? '#f43f5e' : '#a855f7');
+            const glowColor = this.type === 'hunter' ? '#e11d48' : '#9333ea';
+
+            ctx.shadowColor = glowColor;
+            ctx.shadowBlur = 12;
+
+            // Tentakler / Ben som rör sig
+            ctx.strokeStyle = mainColor;
+            ctx.lineWidth = 3;
+            for (let i = -2; i <= 2; i++) {
+                if (i === 0) continue;
+                const swing = Math.sin(this.phase * 2 + i) * 5;
+                ctx.beginPath();
+                ctx.moveTo(i * 6, 8);
+                ctx.quadraticCurveTo(i * 8 + swing, 16, i * 7 - swing, 23);
+                ctx.stroke();
+            }
+
+            // Monsterkropp
+            ctx.fillStyle = '#1e1b4b';
+            ctx.strokeStyle = mainColor;
+            ctx.lineWidth = 2.5;
+
+            ctx.beginPath();
+            ctx.arc(0, 0, 17, Math.PI, 0, false);
+            ctx.lineTo(19, 10);
+            ctx.lineTo(-19, 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Lysande ögon
+            ctx.fillStyle = this.type === 'hunter' ? '#fde047' : '#4ade80';
+            ctx.beginPath();
+            ctx.arc(-6, -1, 3.5, 0, Math.PI * 2);
+            ctx.arc(6, -1, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pupiller
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(-6, 0, 1.3, 0, Math.PI * 2);
+            ctx.arc(6, 0, 1.3, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    function createExplosion(x, y, color, count = 18) {
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 40 + Math.random() * 220;
+            particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                radius: 1.5 + Math.random() * 3.5,
+                life: 0.4 + Math.random() * 0.4,
+                maxLife: 0.8,
+                color: color
+            });
+        }
+    }
+
+    function addFloatingText(x, y, text, color = '#22d3ee') {
+        floatingTexts.push({
+            x: x,
+            y: y,
+            text: text,
+            color: color,
+            life: 0.9
+        });
+    }
+
+    function maybeSpawnPowerup(x, y) {
+        if (Math.random() < 0.14) {
+            const type = Math.random() < 0.5 ? 'weapon' : 'shield';
+            powerups.push({
+                x: x,
+                y: y,
+                vy: 110,
+                radius: 13,
+                type: type,
+                angle: 0
+            });
+        }
+    }
+
+    function updateHUD() {
+        hudScore.textContent = Math.floor(score);
+        if (score > highScore) {
+            highScore = Math.floor(score);
+            hudHighScore.textContent = highScore;
+            try {
+                localStorage.setItem('rymdforsvararen_highscore', highScore);
+            } catch (e) {}
+        }
+
+        // Uppdatera sköld-ikoner
+        livesContainer.innerHTML = '';
+        if (player) {
+            for (let i = 0; i < player.maxLives; i++) {
+                const span = document.createElement('span');
+                if (i < player.lives) {
+                    span.textContent = '🛡️';
+                    span.className = 'drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]';
+                } else {
+                    span.textContent = '🛡️';
+                    span.className = 'opacity-25 grayscale';
+                }
+                livesContainer.appendChild(span);
+            }
+        }
+    }
+
+    function startGame(difficultyKey) {
+        sound.init();
+        currentDifficultyKey = difficultyKey || 'medium';
+        const diff = DIFFICULTIES[currentDifficultyKey];
+
+        // Återställ spelvariabler
+        score = 0;
+        monstersKilled = 0;
+        asteroidsDestroyed = 0;
+        difficultyProgression = 1;
+        asteroidTimer = 0;
+        monsterTimer = 0;
+
+        player = new Player(diff.lives);
+        playerLasers = [];
+        enemyLasers = [];
+        asteroids = [];
+        monsters = [];
+        particles = [];
+        floatingTexts = [];
+        powerups = [];
+
+        // Uppdatera UI
+        hudDifficulty.textContent = diff.label;
+        hudDifficulty.className = `text-xs font-bold uppercase px-2 py-0.5 rounded border ${diff.badgeClass}`;
+        updateHUD();
+
+        startScreen.classList.add('hidden');
+        gameoverScreen.classList.add('hidden');
+        hud.classList.remove('hidden');
+
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+    }
+
+    // Gör startGame globalt tillgänglig för HTML onclick
+    window.startGame = startGame;
+
+    function triggerGameOver() {
+        gameState = 'GAMEOVER';
+        sound.playExplosion('player');
+        createExplosion(player.x, player.y, '#38bdf8', 40);
+        createExplosion(player.x, player.y, '#f43f5e', 30);
+
+        hud.classList.add('hidden');
+        gameoverScreen.classList.remove('hidden');
+
+        finalScoreEl.textContent = Math.floor(score);
+        finalHighScoreEl.textContent = highScore;
+        statMonstersEl.textContent = monstersKilled;
+        statAsteroidsEl.textContent = asteroidsDestroyed;
+    }
+
+    function damagePlayer() {
+        if (!player || player.invulnerableTimer > 0) return;
+        player.lives -= 1;
+        player.invulnerableTimer = 1.6;
+        screenShake = 0.35;
+        sound.playExplosion('player');
+        createExplosion(player.x, player.y, '#38bdf8', 22);
+        updateHUD();
+
+        if (player.lives <= 0) {
+            triggerGameOver();
+        }
+    }
+
+    function updateGame(dt) {
+        // Stjärnhimmel rör sig alltid
+        stars.forEach(s => {
+            s.y += s.speed * dt * (gameState === 'PLAYING' ? 1.2 : 0.5);
+            s.twinklePhase += s.twinkleSpeed * dt;
+            if (s.y > canvas.height) {
+                s.y = -5;
+                s.x = Math.random() * canvas.width;
+            }
+        });
+
+        // Uppdatera partiklar
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.life -= dt;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        // Uppdatera flytande poängtext
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            const ft = floatingTexts[i];
+            ft.y -= 45 * dt;
+            ft.life -= dt;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+
+        if (screenShake > 0) {
+            screenShake = Math.max(0, screenShake - dt);
+        }
+
+        if (gameState !== 'PLAYING') return;
+
+        const diff = DIFFICULTIES[currentDifficultyKey];
+        // Öka svårigheten gradvis över tid
+        difficultyProgression += dt * 0.018;
+        const currentSpeedMult = diff.speedMultiplier * Math.min(1.8, difficultyProgression);
+
+        player.update(dt);
+
+        // Spawna asteroider
+        asteroidTimer += dt * 1000;
+        const currentAsteroidInterval = diff.asteroidInterval / Math.min(1.7, difficultyProgression);
+        if (asteroidTimer >= currentAsteroidInterval) {
+            asteroidTimer = 0;
+            asteroids.push(new Asteroid(currentSpeedMult));
+        }
+
+        // Spawna rymdmonster
+        monsterTimer += dt * 1000;
+        const currentMonsterInterval = diff.monsterInterval / Math.min(1.7, difficultyProgression);
+        if (monsterTimer >= currentMonsterInterval) {
+            monsterTimer = 0;
+            monsters.push(new Monster(currentSpeedMult, diff.monsterShootChance));
+        }
+
+        // Uppdatera spelarens laserskott
+        for (let i = playerLasers.length - 1; i >= 0; i--) {
+            const l = playerLasers[i];
+            l.x += l.vx * dt;
+            l.y += l.vy * dt;
+            if (l.y < -20 || l.x < -20 || l.x > canvas.width + 20) {
+                playerLasers.splice(i, 1);
+            }
+        }
+
+        // Uppdatera fiendens laserskott
+        for (let i = enemyLasers.length - 1; i >= 0; i--) {
+            const el = enemyLasers[i];
+            el.x += el.vx * dt;
+            el.y += el.vy * dt;
+
+            // Kollision med spelare
+            if (Math.hypot(el.x - player.x, el.y - player.y) < el.radius + player.radius - 4) {
+                enemyLasers.splice(i, 1);
+                damagePlayer();
+                continue;
+            }
+
+            if (el.y > canvas.height + 20 || el.x < -20 || el.x > canvas.width + 20) {
+                enemyLasers.splice(i, 1);
+            }
+        }
+
+        // Uppdatera powerups
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            const pu = powerups[i];
+            pu.y += pu.vy * dt;
+            pu.angle += dt * 3;
+
+            if (Math.hypot(pu.x - player.x, pu.y - player.y) < pu.radius + player.radius) {
+                sound.playPowerup();
+                if (pu.type === 'weapon') {
+                    player.weaponUpgradeTimer = 8.0;
+                    addFloatingText(pu.x, pu.y, 'TRIPPELLASER!', '#c084fc');
+                } else {
+                    if (player.lives < player.maxLives) {
+                        player.lives += 1;
+                        addFloatingText(pu.x, pu.y, '+1 SKÖLD!', '#34d399');
+                    } else {
+                        score += 50 * diff.scoreMultiplier;
+                        addFloatingText(pu.x, pu.y, `+${Math.floor(50 * diff.scoreMultiplier)}`, '#34d399');
+                    }
+                    updateHUD();
+                }
+                powerups.splice(i, 1);
+                continue;
+            }
+
+            if (pu.y > canvas.height + 30) {
+                powerups.splice(i, 1);
+            }
+        }
+
+        // Uppdatera asteroider & kolla kollisioner
+        for (let i = asteroids.length - 1; i >= 0; i--) {
+            const a = asteroids[i];
+            a.update(dt);
+
+            // Kollision med spelare
+            if (Math.hypot(a.x - player.x, a.y - player.y) < a.radius + player.radius - 5) {
+                createExplosion(a.x, a.y, '#94a3b8', 15);
+                asteroids.splice(i, 1);
+                damagePlayer();
+                continue;
+            }
+
+            // Kollision med spelarens skott
+            let destroyed = false;
+            for (let j = playerLasers.length - 1; j >= 0; j--) {
+                const l = playerLasers[j];
+                if (Math.hypot(a.x - l.x, a.y - l.y) < a.radius + l.radius) {
+                    playerLasers.splice(j, 1);
+                    a.hp -= 1;
+                    a.hitFlash = 0.08;
+                    if (a.hp <= 0) {
+                        sound.playExplosion('small');
+                        createExplosion(a.x, a.y, '#f59e0b', 16);
+                        const pts = Math.floor(15 * diff.scoreMultiplier);
+                        score += pts;
+                        asteroidsDestroyed += 1;
+                        addFloatingText(a.x, a.y, `+${pts}`, '#fcd34d');
+                        maybeSpawnPowerup(a.x, a.y);
+                        updateHUD();
+                        asteroids.splice(i, 1);
+                        destroyed = true;
+                        break;
+                    }
+                }
+            }
+            if (destroyed) continue;
+
+            if (a.y > canvas.height + a.radius + 30) {
+                asteroids.splice(i, 1);
+            }
+        }
+
+        // Uppdatera rymdmonster & kolla kollisioner
+        for (let i = monsters.length - 1; i >= 0; i--) {
+            const m = monsters[i];
+            m.update(dt);
+
+            // Kollision med spelare
+            if (Math.hypot(m.x - player.x, m.y - player.y) < m.radius + player.radius - 4) {
+                createExplosion(m.x, m.y, '#ec4899', 22);
+                monsters.splice(i, 1);
+                damagePlayer();
+                continue;
+            }
+
+            // Kollision med spelarens skott
+            let killed = false;
+            for (let j = playerLasers.length - 1; j >= 0; j--) {
+                const l = playerLasers[j];
+                if (Math.hypot(m.x - l.x, m.y - l.y) < m.radius + l.radius) {
+                    playerLasers.splice(j, 1);
+                    m.hp -= 1;
+                    m.hitFlash = 0.08;
+                    if (m.hp <= 0) {
+                        sound.playExplosion('monster');
+                        createExplosion(m.x, m.y, m.type === 'hunter' ? '#f43f5e' : '#a855f7', 24);
+                        const basePts = m.type === 'hunter' ? 45 : 30;
+                        const pts = Math.floor(basePts * diff.scoreMultiplier);
+                        score += pts;
+                        monstersKilled += 1;
+                        addFloatingText(m.x, m.y, `+${pts}`, '#f472b6');
+                        maybeSpawnPowerup(m.x, m.y);
+                        updateHUD();
+                        monsters.splice(i, 1);
+                        killed = true;
+                        break;
+                    }
+                }
+            }
+            if (killed) continue;
+
+            if (m.y > canvas.height + m.radius + 30) {
+                monsters.splice(i, 1);
+            }
+        }
+    }
+
+    function drawGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        if (screenShake > 0) {
+            const shakeX = (Math.random() - 0.5) * 12;
+            const shakeY = (Math.random() - 0.5) * 12;
+            ctx.translate(shakeX, shakeY);
+        }
+
+        // Rita stjärnor
+        stars.forEach(s => {
+            const twinkle = 0.6 + Math.sin(s.twinklePhase) * 0.4;
+            ctx.globalAlpha = s.alpha * twinkle;
+            ctx.fillStyle = s.color;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        // Rita powerups
+        powerups.forEach(pu => {
+            ctx.save();
+            ctx.translate(pu.x, pu.y);
+            ctx.rotate(pu.angle);
+            ctx.shadowColor = pu.type === 'weapon' ? '#c084fc' : '#34d399';
+            ctx.shadowBlur = 12;
+            ctx.fillStyle = pu.type === 'weapon' ? '#9333ea' : '#059669';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, pu.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px Orbitron, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(pu.type === 'weapon' ? 'W' : '+', 0, 1);
+            ctx.restore();
+        });
+
+        // Rita spelarens skott
+        playerLasers.forEach(l => {
+            ctx.save();
+            ctx.shadowColor = l.color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = l.color;
+            ctx.beginPath();
+            ctx.roundRect(l.x - 2.5, l.y - 10, 5, 18, 3);
+            ctx.fill();
+            ctx.restore();
+        });
+
+        // Rita fiendens skott
+        enemyLasers.forEach(el => {
+            ctx.save();
+            ctx.shadowColor = '#f43f5e';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#fb7185';
+            ctx.beginPath();
+            ctx.arc(el.x, el.y, el.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+
+        // Rita asteroider
+        asteroids.forEach(a => a.draw(ctx));
+
+        // Rita monster
+        monsters.forEach(m => m.draw(ctx));
+
+        // Rita spelare
+        if (gameState === 'PLAYING' && player) {
+            player.draw(ctx);
+        }
+
+        // Rita partiklar
+        particles.forEach(p => {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        });
+
+        // Rita flytande poängtext
+        floatingTexts.forEach(ft => {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, ft.life);
+            ctx.font = 'bold 14px Orbitron, sans-serif';
+            ctx.fillStyle = ft.color;
+            ctx.textAlign = 'center';
+            ctx.fillText(ft.text, ft.x, ft.y);
+            ctx.restore();
+        });
+
+        ctx.restore();
+    }
+
+    function gameLoop(timestamp) {
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000 || 0.016);
+        lastTime = timestamp;
+
+        updateGame(dt);
+        drawGame();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Tangentbordsstyrning
+    window.addEventListener('keydown', (e) => {
+        if (e.code in keys) {
+            keys[e.code] = true;
+            if (e.code === 'Space' && gameState === 'PLAYING') {
+                e.preventDefault();
+            }
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code in keys) {
+            keys[e.code] = false;
+        }
+    });
+
+    // Pekskärmsstyrning (Mobil/Surfplatta)
+    canvas.addEventListener('touchstart', (e) => {
+        if (gameState !== 'PLAYING') return;
+        const touch = e.touches[0];
+        touchState.active = true;
+        touchState.x = touch.clientX;
+        touchState.y = touch.clientY;
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (!touchState.active) return;
+        const touch = e.touches[0];
+        touchState.x = touch.clientX;
+        touchState.y = touch.clientY;
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', () => {
+        touchState.active = false;
+    });
+
+    // Ljud- och omstartsknappar
+    document.getElementById('btn-mute').addEventListener('click', () => {
+        sound.muted = !sound.muted;
+        document.getElementById('icon-sound-on').classList.toggle('hidden', sound.muted);
+        document.getElementById('icon-sound-off').classList.toggle('hidden', !sound.muted);
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+        startGame(currentDifficultyKey);
+    });
+
+    document.getElementById('btn-change-diff').addEventListener('click', () => {
+        gameoverScreen.classList.add('hidden');
+        startScreen.classList.remove('hidden');
+        gameState = 'START';
+    });
+
+    // Initiera vid sidladdning
+    window.onload = function () {
+        resizeCanvas();
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    };
+</script>
+</body>
+</html>
